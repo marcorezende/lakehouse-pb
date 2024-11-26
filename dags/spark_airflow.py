@@ -22,6 +22,7 @@ bronze = SparkSubmitOperator(
     task_id="bronze",
     conn_id="spark-conn",
     conf={
+        "spark.jars.packages": "org.apache.hadoop:hadoop-aws:3.3.4",
         "spark.hadoop.fs.s3a.connection.ssl.enabled": "false",
         "spark.hadoop.fs.s3a.path.style.access": "true",
         "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
@@ -33,6 +34,7 @@ bronze = SparkSubmitOperator(
     },
     packages=(
         "io.delta:delta-spark_2.12:3.2.0,"
+        "io.delta:delta-storage:3.2.0,"
         "com.amazonaws:aws-java-sdk-bundle:1.12.262,"
         "org.apache.hadoop:hadoop-aws:3.3.4,"
         "org.apache.hadoop:hadoop-common:3.3.4"
