@@ -2,11 +2,9 @@ import subprocess
 import sys
 
 import pkg_resources
-from pyspark.ml import Pipeline
-from pyspark.ml.feature import StringIndexer, VectorAssembler, StandardScaler, OneHotEncoder
-from pyspark.sql import SparkSession
+from pyspark import SparkContext
+from pyspark.sql import SparkSession, DataFrame, Column
 from pyspark.sql.functions import sqrt, pow, col, from_unixtime, hour, when, lit, udf
-from pyspark.sql.types import DoubleType
 
 try:
     import joblib
@@ -17,6 +15,16 @@ except Exception as e:
     print(e)
 finally:
     import joblib
+
+try:
+    import sklearn
+
+    pkg_resources.require("scikit-learn")
+except Exception as e:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "scikit-learn==1.5.2"])
+    print(e)
+finally:
+    import sklearn
 
 spark = SparkSession.builder \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
@@ -59,14 +67,11 @@ is_fraud INT,
 merch_zipcode STRING
 """
 
-# data_frame = spark.readStream \
-#     .schema(schema) \
-#     .csv('s3a://lakehouse/landing/transactions/*')
-
-data_frame = spark.read \
+data_frame = spark.readStream \
     .schema(schema) \
-    .option('header', 'true')\
+    .option('header', 'true') \
     .csv('s3a://lakehouse/landing/transactions/*')
+
 
 data_frame = data_frame.withColumn('unix_time', from_unixtime('unix_time'))
 
@@ -84,44 +89,28 @@ data_frame = data_frame.withColumn(
     sqrt(pow(col("merch_lat") - col("lat"), 2) + pow(col("merch_long") - col("long"), 2))
 )
 
-indexer = StringIndexer(inputCol="category", outputCol="category_index")
-encoder = OneHotEncoder(inputCol="category_index", outputCol="category_encoded")
-
-time_category_indexer = StringIndexer(inputCol="time_category", outputCol="time_category_index")
-time_category_encoder = OneHotEncoder(inputCol="time_category_index", outputCol="time_category_encoded")
-
-assembler = VectorAssembler(inputCols=["amt", "distancia_cliente_comerciante"], outputCol="features_unscaled")
-scaler = StandardScaler(inputCol="features_unscaled", outputCol="features", withStd=True, withMean=False)
-
-pipeline = Pipeline(stages=[indexer, encoder, time_category_indexer, time_category_encoder, assembler, scaler])
-data_frame.show()
-model = pipeline.fit(data_frame)
-processed_data = model.transform(data_frame)
-
-model = joblib.load("/opt/bitnami/spark/fraud_model.pkl")
+model = joblib.load("jobs/fraud_model.pkl")
 
 
-def predict_fraud(amt, distancia_cliente_comerciante, time_category, category):
-    input_data = [[amt, distancia_cliente_comerciante, time_category, category]]
-    return float(model.predict(input_data)[0])
+def prediction(df: DataFrame, model_ml, spark_context: SparkContext) -> Column:
+    model_ml = spark_context.broadcast(model_ml)
 
+    @udf('float')
+    def predict_data(*cols):
+        return float(model_ml.value.predict((cols,))[0])
 
-predict_udf = udf(predict_fraud, DoubleType())
+    return predict_data(*df.columns)
+
 
 stream_df = data_frame.withColumn(
     "fraud_prediction",
-    predict_udf(
-        col("amt"),
-        col("distancia_cliente_comerciante"),
-        col("time_category"),
-        col("category")
-    )
+    prediction(df=data_frame.select('amt', 'distancia_cliente_comerciante', 'category', 'time_category'),
+               model_ml=model, spark_context=spark.sparkContext)
 )
 
-# stream_df.writeStream.format("delta") \
-#     .option("checkpointLocation", 's3a://lakehouse/speed_checkpoint') \
-#     .trigger(processingTime='2 seconds') \
-#     .start('s3a://lakehouse/gold/live_deteccao_fraude') \
-#     .awaitTermination()
+stream_df.writeStream.format("delta") \
+    .option("checkpointLocation", 's3a://lakehouse/speed_checkpoint') \
+    .trigger(processingTime='2 seconds') \
+    .start('s3a://lakehouse/gold/live_deteccao_fraude') \
+    .awaitTermination()
 
-# stream_df.write.format('delta').mode('overwrite').save('s3a://lakehouse/gold/live_deteccao_fraude')

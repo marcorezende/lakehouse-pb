@@ -1,0 +1,49 @@
+{
+  "tables": [
+    {
+      "user": "(cientista|analista)",
+      "catalog": "delta",
+      "schema": "default",
+      "table": "live_deteccao_fraude",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "user": "(cientista|analista)",
+      "catalog": "delta",
+      "schema": "default",
+      "table": "taxa_fraude_por_categoria",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "user": "(cientista|analista)",
+      "catalog": "delta",
+      "schema": "default",
+      "table": "total_transacoes_por_comerciante",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "user": "(cientista|analista)",
+      "catalog": "delta",
+      "schema": "default",
+      "table": "valor_medio_por_faixa_etaria",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "user": "cientista",
+      "catalog": "delta",
+      "schema": "default",
+      "table": "bronze_transactions",
+      "privileges": [
+        "SELECT"
+      ]
+    }
+  ]
+}
